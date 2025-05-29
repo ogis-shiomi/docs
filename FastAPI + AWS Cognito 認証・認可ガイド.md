@@ -104,93 +104,29 @@ pydantic==2.5.0
 ## 📄 プロジェクト構成例
 
 ```
-project/
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── config.py
-│   ├── auth/
-│   │   ├── __init__.py
-│   │   └── dependencies.py
-│   └── routers/
-│       ├── __init__.py
-│       ├── public.py
-│       └── protected.py
-├── .env
+backend/
+├── config/
+│   ├── auth_settings.py   # 認証・認可の基本設定
+│   ├── logging_config.py  # ログ設定
+│   └── ...
+├── api/
+│   └── api_v1/
+│       └── auth/
+│           └── dependencies.py
+├── business/
+├── models/
+├── schemas/
+├── utils/
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## ⚙️ 環境変数設定
-
-### 開発環境（`.env.development`）
-```bash
-# .env.development
-ENVIRONMENT=development
-DEBUG=true
-LOG_LEVEL=DEBUG
-
-# AWS Cognito設定
-COGNITO_USER_POOL_ID=ap-northeast-1_XXXXXXXXX
-COGNITO_REGION=ap-northeast-1  
-COGNITO_APP_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxx
-
-# CORS設定（開発環境）
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-
-# API設定
-API_TITLE=FastAPI + AWS Cognito API (Development)
-API_PREFIX=/api/v1
-```
-
-### ステージング環境（`.env.staging`）
-```bash
-# .env.staging
-ENVIRONMENT=staging
-DEBUG=false
-LOG_LEVEL=INFO
-
-# AWS Cognito設定
-COGNITO_USER_POOL_ID=ap-northeast-1_YYYYYYY
-COGNITO_REGION=ap-northeast-1
-COGNITO_APP_CLIENT_ID=yyyyyyyyyyyyyyyyyyyyy
-
-# CORS設定（ステージング環境）
-ALLOWED_ORIGINS=https://staging.yourdomain.com
-
-# API設定
-API_TITLE=FastAPI + AWS Cognito API (Staging)
-API_PREFIX=/api/v1
-```
-
-### 本番環境（`.env.production`）
-```bash
-# .env.production
-ENVIRONMENT=production
-DEBUG=false
-LOG_LEVEL=WARNING
-
-# AWS Cognito設定
-COGNITO_USER_POOL_ID=ap-northeast-1_ZZZZZZZ
-COGNITO_REGION=ap-northeast-1
-COGNITO_APP_CLIENT_ID=zzzzzzzzzzzzzzzzzzzzz
-
-# CORS設定（本番環境）
-ALLOWED_ORIGINS=https://yourdomain.com
-
-# API設定
-API_TITLE=FastAPI + AWS Cognito API
-API_PREFIX=/api/v1
-```
-
----
-
-## 🔧 設定管理（`app/config.py`）
+## 🔧 設定管理（`backend/config/auth_settings.py`）
 
 ```python
-# app/config.py
+# backend/config/auth_settings.py
 import os
 from typing import Optional
 from pydantic import BaseSettings, validator
@@ -281,95 +217,95 @@ settings = get_settings()
 
 ---
 
-## 🔐 認証依存性とエラーハンドリング（`app/auth/dependencies.py`）
+## 🔐 認証依存性とエラーハンドリング（`backend/api/api_v1/auth/dependencies.py`）
 
 ```python
-# app/auth/dependencies.py
-import logging
-from typing import Optional
-from fastapi import HTTPException, status, Request
-from fastapi_cloudauth.cognito import Cognito, CognitoClaims, CognitoCurrentUser
-from fastapi_cloudauth.exceptions import CloudAuthError
-from app.config import get_settings
+# backend/api/api_v1/auth/dependencies.py
+import logging  # ロギング用モジュール
+from typing import Optional  # 型ヒント用
+from fastapi import HTTPException, status, Request  # FastAPIの主要クラス
+from fastapi_cloudauth.cognito import Cognito, CognitoClaims, CognitoCurrentUser  # Cognito認証用
+from fastapi_cloudauth.exceptions import CloudAuthError  # 認証例外
+from backend.config.auth_settings import get_settings  # 設定取得
 
-logger = logging.getLogger(__name__)
-settings = get_settings()
+logger = logging.getLogger(__name__)  # このモジュール用のロガー取得
+settings = get_settings()  # 設定インスタンス取得
 
 # Cognito認証の設定
 auth = Cognito(
-    user_pool_id=settings.cognito_user_pool_id,
-    region=settings.cognito_region,
-    client_id=settings.cognito_app_client_id,
+    user_pool_id=settings.cognito_user_pool_id,  # ユーザープールIDを設定
+    region=settings.cognito_region,  # リージョンを設定
+    client_id=settings.cognito_app_client_id,  # アプリクライアントIDを設定
     auto_error=False  # 手動でエラーハンドリングを行う
 )
 
 class AuthenticationError(Exception):
     """認証エラーの基底クラス"""
     def __init__(self, message: str, status_code: int = 401):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
+        self.message = message  # エラーメッセージ
+        self.status_code = status_code  # ステータスコード
+        super().__init__(self.message)  # 親クラス初期化
 
 class AuthorizationError(Exception):
     """認可エラーの基底クラス"""
     def __init__(self, message: str, status_code: int = 403):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
+        self.message = message  # エラーメッセージ
+        self.status_code = status_code  # ステータスコード
+        super().__init__(self.message)  # 親クラス初期化
 
 async def get_current_user_with_error_handling(request: Request) -> Optional[CognitoClaims]:
     """エラーハンドリング付きの現在ユーザー取得"""
     try:
         # Authorization ヘッダーの存在確認
-        authorization = request.headers.get("Authorization")
+        authorization = request.headers.get("Authorization")  # ヘッダーからトークン取得
         if not authorization:
-            logger.warning("Authorization header is missing")
+            logger.warning("Authorization header is missing")  # ヘッダーがなければ警告
             return None
             
         if not authorization.startswith("Bearer "):
-            logger.warning("Invalid authorization header format")
+            logger.warning("Invalid authorization header format")  # フォーマット不正なら警告
             return None
             
         # トークン検証
-        user = await auth.current_user(request)
+        user = await auth.current_user(request)  # トークンからユーザー情報取得
         if user:
-            logger.info(f"User authenticated successfully: {user.username}")
+            logger.info(f"User authenticated successfully: {user.username}")  # 成功ログ
             return user
         else:
-            logger.warning("Token validation failed")
+            logger.warning("Token validation failed")  # 失敗ログ
             return None
             
     except CloudAuthError as e:
-        logger.error(f"CloudAuth error: {str(e)}")
+        logger.error(f"CloudAuth error: {str(e)}")  # 認証系エラー
         return None
     except Exception as e:
-        logger.error(f"Unexpected authentication error: {str(e)}")
+        logger.error(f"Unexpected authentication error: {str(e)}")  # その他例外
         return None
 
 async def require_authentication(request: Request) -> CognitoClaims:
     """認証が必須のエンドポイント用依存性"""
-    user = await get_current_user_with_error_handling(request)
+    user = await get_current_user_with_error_handling(request)  # ユーザー取得
     if not user:
-        logger.warning(f"Authentication failed for request to {request.url.path}")
+        logger.warning(f"Authentication failed for request to {request.url.path}")  # 失敗ログ
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_401_UNAUTHORIZED,  # 401エラー
             detail={
                 "error": "authentication_required",
                 "message": "有効な認証トークンが必要です"
             },
             headers={"WWW-Authenticate": "Bearer"}
         )
-    return user
+    return user  # 認証済みユーザー返却
 
 async def require_admin_role(request: Request) -> CognitoClaims:
     """管理者権限が必要なエンドポイント用の依存性"""
-    user = await require_authentication(request)
-    user_role = user.get("custom:role")
+    user = await require_authentication(request)  # 認証必須
+    user_role = user.get("custom:role")  # ロール取得
     
     if user_role != "admin":
-        logger.warning(f"Access denied for user {user.username} (role: {user_role}) to admin endpoint")
+        logger.warning(f"Access denied for user {user.username} (role: {user_role}) to admin endpoint")  # 権限不足
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN,  # 403エラー
             detail={
                 "error": "insufficient_permissions",
                 "message": "管理者権限が必要です",
@@ -378,19 +314,19 @@ async def require_admin_role(request: Request) -> CognitoClaims:
             }
         )
     
-    logger.info(f"Admin access granted for user: {user.username}")
-    return user
+    logger.info(f"Admin access granted for user: {user.username}")  # 成功ログ
+    return user  # 管理者ユーザー返却
 
 async def require_user_or_admin_role(request: Request) -> CognitoClaims:
     """一般ユーザーまたは管理者権限が必要なエンドポイント用の依存性"""
-    user = await require_authentication(request)
-    user_role = user.get("custom:role")
-    allowed_roles = ["user", "admin"]
+    user = await require_authentication(request)  # 認証必須
+    user_role = user.get("custom:role")  # ロール取得
+    allowed_roles = ["user", "admin"]  # 許可ロール
     
     if user_role not in allowed_roles:
-        logger.warning(f"Access denied for user {user.username} (role: {user_role})")
+        logger.warning(f"Access denied for user {user.username} (role: {user_role})")  # 権限不足
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN,  # 403エラー
             detail={
                 "error": "insufficient_permissions", 
                 "message": "適切な権限がありません",
@@ -399,24 +335,24 @@ async def require_user_or_admin_role(request: Request) -> CognitoClaims:
             }
         )
     
-    logger.info(f"User access granted for user: {user.username} (role: {user_role})")
-    return user
+    logger.info(f"User access granted for user: {user.username} (role: {user_role})")  # 成功ログ
+    return user  # 許可ユーザー返却
 
 # オプション: 現在のユーザー情報を取得（認証失敗時はNoneを返す）
-current_user_optional = get_current_user_with_error_handling
+current_user_optional = get_current_user_with_error_handling  # 認証失敗時None返却の依存性
 ```
 
 ---
 
-## 📊 ログ設定（`app/logging_config.py`）
+## 📊 ログ設定（`backend/config/logging_config.py`）
 
 ```python
-# app/logging_config.py
+# backend/config/logging_config.py
 import logging
 import logging.config
 import sys
 from typing import Dict, Any
-from app.config import get_settings
+from backend.config.auth_settings import get_settings
 
 settings = get_settings()
 
@@ -497,7 +433,7 @@ def setup_logging():
 ```
 
 ```python
-# app/main.py
+# backend/api/main.py
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -506,9 +442,9 @@ from fastapi.responses import JSONResponse
 from fastapi_cloudauth.cognito import CognitoClaims
 from fastapi_cloudauth.exceptions import CloudAuthError
 
-from app.config import get_settings
-from app.logging_config import setup_logging
-from app.auth.dependencies import (
+from backend.config.auth_settings import get_settings
+from backend.config.logging_config import setup_logging
+from backend.api.auth.dependencies import (
     require_authentication,
     require_admin_role, 
     require_user_or_admin_role,
@@ -865,7 +801,63 @@ current_user: GoogleCurrentUser = auth.current_user
 
 ---
 
+## 📝 ローカル開発用 `.env` サンプル
+
+```env
+# 環境名
+ENVIRONMENT=development
+
+# AWS Cognito 設定
+COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxxx
+COGNITO_REGION=ap-northeast-1
+COGNITO_APP_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ログ設定
+LOG_LEVEL=DEBUG
+
+# CORS設定（カンマ区切りで複数指定可）
+ALLOWED_ORIGINS=http://localhost:3000
+```
+
+> ※ 必要な変数は `backend/config/auth_settings.py` の `Settings` クラスを参照してください。
+
+---
+
+## 🛡️ AWS本番環境での安全な設定値管理（Parameter Store / Secrets Manager）
+
+本番環境では `.env` ファイルを使わず、AWSの公式サービスで機密情報を安全に管理してください。
+
+### Parameter Store/Secrets Manager での推奨設定例
+
+- **Parameter Store** 例:
+  - `/your-app/ENVIRONMENT` = `production`
+  - `/your-app/COGNITO_USER_POOL_ID` = `ap-northeast-1_xxxxxxxxx`
+  - `/your-app/COGNITO_REGION` = `ap-northeast-1`
+  - `/your-app/COGNITO_APP_CLIENT_ID` = `xxxxxxxxxxxxxxxxxxxxxxxxx`
+  - `/your-app/LOG_LEVEL` = `INFO`
+  - `/your-app/ALLOWED_ORIGINS` = `https://yourdomain.com`
+
+- **Secrets Manager** 例:
+  - シークレット名: `your-app/production/cognito`
+  - キーと値:
+    - `COGNITO_USER_POOL_ID`: `ap-northeast-1_xxxxxxxxx`
+    - `COGNITO_APP_CLIENT_ID`: `xxxxxxxxxxxxxxxxxxxxxxxxx`
+    - ...（必要に応じて追加）
+
+### 使い方のポイント
+- ECSやLambdaのタスク定義で、Parameter StoreやSecrets Managerから値を取得し、環境変数として渡す設定が可能です。
+- IaC（CloudFormation, CDK, Terraform等）で自動化するのが推奨です。
+- FastAPI/Pydanticの設定クラスは、通常の環境変数として値が渡されればそのまま利用できます。
+
+> 詳細はAWS公式ドキュメントも参照してください。
+> - [Parameter Store](https://docs.aws.amazon.com/ja_jp/systems-manager/latest/userguide/systems-manager-parameter-store.html)
+> - [Secrets Manager](https://docs.aws.amazon.com/ja_jp/secretsmanager/latest/userguide/intro.html)
+
+---
+
 ## 📝 変更履歴
 
 - v1.0.0: 初版作成
 - v1.1.0: セキュリティベストプラクティス追加、エラーハンドリング改善
+- v1.2.0: AWS環境でのCognito設定値の管理方法・Parameter Store/Secrets Manager運用例を追記
+- v1.3.0: ローカル用.envサンプルと本番用AWS設定例を明記、変更履歴を末尾に移動
